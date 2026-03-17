@@ -1,0 +1,35 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Node dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Build outputs
+dist/
+build/
+client/dist/
+server/dist/
+.vite/
+client/.vite/
+coverage/
+
+# Environment files
+.env
+.env.*
+!.env.example
+!*.env.example
+
+# Temporary files
+*.tmp
+*.swp
