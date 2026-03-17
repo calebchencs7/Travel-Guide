@@ -1,72 +1,126 @@
 # Travel Notes Map
 
-Travel planning app with map-based places, folder organization, dated notes, and a timeline view.
+Travel planning app with map-based places, folder organization, dated notes, and timeline routing.
 
-## What It Supports
-- Place management: add places from search or by clicking the map, select place, delete place
-- Folder workspace: create nested folders, rename/delete folders, drag folder into another folder, move place to a folder
-- Folder delete behavior: deleting a folder also deletes its subfolders and moves affected places to unfiled
-- Place search: provider-based search
-- `osm` mode: OpenStreetMap Nominatim search
-- `amap` mode: AMap AutoComplete search
-- Notes: add/edit/delete notes with `date`, optional `time`, and `type` (`note` or `food`)
-- Timeline mode: group notes by day and drag to reorder notes within the same day
-- Distance helper: show distance from current selected place to other visible places
-- Map rendering: `osm` mode uses Leaflet + OpenStreetMap tiles, `amap` mode uses AMap JS API + AMap markers
+## Features
+- Place workspace
+  - Add places from search results or by picking a point on the map
+  - Select/delete places
+  - Move places into folders
+- Folder workspace
+  - Nested folders (`parentId`)
+  - Create/rename/delete folders
+  - Drag folders to change hierarchy (with cycle checks)
+  - Deleting a folder removes all descendants and moves related places to `Unfiled`
+- Notes
+  - Add/edit/delete notes with `date`, optional `time`, and `type` (`note` or `food`)
+  - Per-day ordering (`order`) for timeline rendering
+- Timeline mode
+  - Group notes by day
+  - Drag and drop to reorder notes in the same day
+  - Select a day to render route on map
+  - Export day itinerary as PNG (`Export Itinerary`)
+  - Export route overview image as PNG (`Export Route Map`)
+- Distance helper
+  - Shows distance from selected place to other visible places
+- Provider-based map/search
+  - `osm`: Leaflet + OpenStreetMap tiles + Nominatim search
+  - `amap`: AMap JS API + AutoComplete search + district boundary highlight
 
 ## Tech Stack
-- Client: React + Vite
-- Map libs: Leaflet (`osm`) and AMap JS API (`amap`)
-- Server: Node.js + Express
-- Storage: LowDB JSON file (`server/data/db.json`)
+- Frontend: React + Vite
+- Map:
+  - Leaflet + React Leaflet (`osm`)
+  - AMap JS API (`amap`)
+- Backend: Node.js + Express
+- Data: LowDB JSON file at `server/data/db.json`
 
 ## Project Structure
-- `client/` frontend app
-- `server/` backend API and JSON data storage
+- `client/` React app
+- `server/` Express API + LowDB persistence
+- `server/data/db.json` runtime data file
 
 ## Run Locally
-1. Start backend
+1. Start backend:
 ```bash
 cd server
 npm install
 npm run dev
 ```
 
-2. Start frontend (new terminal)
+2. Start frontend (new terminal):
 ```bash
 cd client
 npm install
 npm run dev
 ```
 
-3. Open the Vite URL (usually `http://localhost:5173`)
+3. Open the Vite URL (usually `http://localhost:5173`).
 
-Default API base is `http://localhost:3001`. Override with `VITE_API_BASE`.
+Defaults:
+- Frontend API base: `http://localhost:3001`
+- Backend port: `3001`
+- Map provider: `osm`
 
-## Client Environment Variables
-Create `client/.env` if needed:
+## Environment Variables
 
+### Client (`client/.env`)
 ```bash
 VITE_API_BASE=http://localhost:3001
 VITE_MAP_PROVIDER=amap
-# You can get a free amap key and security code at https://console.amap.com/dev/index
+# Get key/security from https://console.amap.com/dev/index
 VITE_AMAP_KEY=
 VITE_AMAP_SECURITY=
 VITE_NOMINATIM_ENDPOINT=https://nominatim.openstreetmap.org/search
 ```
 
-- `VITE_MAP_PROVIDER`: `osm` or `amap` (default is `osm`)
+- `VITE_API_BASE`: backend base URL (default `http://localhost:3001`)
+- `VITE_MAP_PROVIDER`: `osm` or `amap` (default `osm`)
 - `VITE_AMAP_KEY`: required when `VITE_MAP_PROVIDER=amap`
 - `VITE_AMAP_SECURITY`: optional AMap JS API security code
-- `VITE_NOMINATIM_ENDPOINT`: optional custom Nominatim endpoint for `osm` mode
+- `VITE_NOMINATIM_ENDPOINT`: optional custom endpoint for `osm` search
 
-## Backend API
+### Server
+- `PORT`: backend port (default `3001`)
+
+## API Overview
+
+### Health
 - `GET /api/health`
-- `GET/POST/PATCH/DELETE /api/places`
-- `GET/POST/PATCH/DELETE /api/notes`
-- `GET/POST/PATCH/DELETE /api/folders`
+
+### Places
+- `GET /api/places`
+- `POST /api/places`
+  - Body: `{ name, lat, lng, folderId? }`
+- `PATCH /api/places/:id`
+  - Body: `{ folderId }` (`null` or empty string to unfile)
+- `DELETE /api/places/:id`
+  - Also deletes notes linked to the place
+
+### Folders
+- `GET /api/folders`
+- `POST /api/folders`
+  - Body: `{ name, parentId? }`
+- `PATCH /api/folders/:id`
+  - Body: `{ name?, parentId? }`
+- `DELETE /api/folders/:id`
+  - Deletes folder + descendants, and clears `folderId` on affected places
+
+### Notes
+- `GET /api/notes`
+  - Optional query params: `placeId`, `date`
+- `POST /api/notes`
+  - Body: `{ placeId, date, type?, content, time?, order? }`
+- `PATCH /api/notes/:id`
+  - Body: any of `{ date, type, content, time, order }`
+- `DELETE /api/notes/:id`
 
 ## Data File
-- Stored at `server/data/db.json`
-- Schema root keys: `places`, `notes`, `folders`
-- Server startup normalizes missing keys and recreates safe defaults if JSON is malformed
+- File: `server/data/db.json`
+- Root keys: `places`, `notes`, `folders`
+- On server startup:
+  - Missing root keys are normalized
+  - Malformed JSON falls back to safe empty defaults
+
+---
+Last updated: 2026-03-17

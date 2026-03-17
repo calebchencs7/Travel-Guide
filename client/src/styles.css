@@ -392,8 +392,37 @@ button.place-select > div:first-child {
 .note-item {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: stretch;
   gap: 12px;
+}
+
+.result-item {
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: #f8f6f1;
+}
+
+.result-item.active {
+  border-color: var(--accent-2);
+  background: #e6f4f1;
+}
+
+.result-preview {
+  background: none;
+  color: var(--ink);
+  border: none;
+  padding: 0;
+  text-align: left;
+  display: grid;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.result-preview.active .result-name {
+  color: var(--accent-3);
+  font-weight: 700;
 }
 
 .place-item {
@@ -516,14 +545,68 @@ button.place-select > div:first-child {
   gap: 16px;
 }
 
+.timeline-tools {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.timeline-export-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .timeline-day {
   border-left: 2px solid var(--accent-2);
   padding-left: 12px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 12px;
+  padding-top: 10px;
+  padding-bottom: 6px;
+}
+
+.timeline-day.active {
+  border-left-color: var(--accent);
+  background: rgba(231, 111, 81, 0.1);
+}
+
+.timeline-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
 }
 
 .timeline-date {
+  background: transparent;
+  color: var(--accent-3);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 12px;
   font-weight: 700;
-  margin-bottom: 8px;
+  margin-bottom: 0;
+  line-height: 1.2;
+}
+
+.timeline-date:hover {
+  border-color: var(--accent-2);
+}
+
+.timeline-date.timeline-date-active {
+  background: var(--accent-3);
+  border-color: var(--accent-3);
+  color: #fff;
+}
+
+.timeline-route-tip {
+  margin: 8px 0 10px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .timeline-item {
@@ -639,6 +722,11 @@ button.place-select > div:first-child {
   overflow-wrap: anywhere;
 }
 
+.result-sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
 button.ghost {
   background: #f2ece3;
   color: var(--accent-3);
@@ -686,6 +774,14 @@ button.ghost {
 .amap-marker-dot.pending {
   background: #8d99ae;
   border-style: dashed;
+}
+
+.marker-dot.preview,
+.amap-marker-dot.preview {
+  background: #2a9d8f;
+  border-width: 3px;
+  transform: scale(1.2);
+  box-shadow: 0 0 0 8px rgba(42, 157, 143, 0.2), 0 2px 10px rgba(0, 0, 0, 0.28);
 }
 
 .map-error {

@@ -74,9 +74,14 @@ export default function Sidebar({
   pendingLatLng,
   mapPickEnabled,
   mode,
+  selectedTimelineDate,
   loading,
   error,
+  searchPreviewPlaceId,
   onModeChange,
+  onSelectTimelineDate,
+  onPreviewSearchResult,
+  onClearSearchPreview,
   onSelectPlace,
   onAddPlace,
   onDeletePlace,
@@ -249,6 +254,37 @@ export default function Sidebar({
 
     return entries;
   }, [timelineNotes]);
+
+  const selectedTimelineItems = useMemo(() => {
+    if (!selectedTimelineDate) return [];
+    const matched = notesByDate.find(([date]) => date === selectedTimelineDate);
+    return matched ? matched[1] : [];
+  }, [notesByDate, selectedTimelineDate]);
+
+  const selectedRoutePoints = useMemo(() => {
+    if (!selectedTimelineDate || selectedTimelineItems.length === 0) return [];
+    const points = [];
+    let previousPlaceId = null;
+
+    selectedTimelineItems.forEach((note) => {
+      const place = placeById.get(note.placeId);
+      if (!place) return;
+      const lat = Number(place.lat);
+      const lng = Number(place.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      if (previousPlaceId === place.id) return;
+
+      previousPlaceId = place.id;
+      points.push({
+        id: place.id,
+        name: place.name || "Unknown place",
+        lat,
+        lng
+      });
+    });
+
+    return points;
+  }, [selectedTimelineDate, selectedTimelineItems, placeById]);
 
   const distanceById = useMemo(() => {
     if (!selectedPlace) return new Map();
@@ -475,6 +511,7 @@ export default function Sidebar({
 
     setSearching(true);
     setSearchError("");
+    onClearSearchPreview();
 
     try {
       if (MAP_PROVIDER === "amap") {
@@ -529,6 +566,9 @@ export default function Sidebar({
           .filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lng));
 
         setSearchResults(results);
+        if (results.length === 0) {
+          onClearSearchPreview();
+        }
         return;
       }
 
@@ -547,11 +587,18 @@ export default function Sidebar({
       }));
 
       setSearchResults(results);
+      if (results.length === 0) {
+        onClearSearchPreview();
+      }
     } catch (err) {
       setSearchError(err.message || "Search failed");
     } finally {
       setSearching(false);
     }
+  }
+
+  function handlePreviewSearchResult(result) {
+    onPreviewSearchResult(result);
   }
 
   async function handleAddFromSearch(result) {
@@ -565,6 +612,7 @@ export default function Sidebar({
     if (place) {
       setSearchResults([]);
       setSearchQuery("");
+      onClearSearchPreview();
     }
   }
 
@@ -635,6 +683,389 @@ export default function Sidebar({
     if (updated) {
       handleCancelEditNote();
     }
+  }
+
+  function handleSelectTimelineDay(date) {
+    if (!date) return;
+    if (selectedTimelineDate === date) {
+      onSelectTimelineDate("");
+      return;
+    }
+    onSelectTimelineDate(date);
+  }
+
+  function wrapCanvasText(ctx, value, maxWidth) {
+    const text = String(value || "");
+    if (!text) return [""];
+    const lines = [];
+    let current = "";
+
+    for (const char of text) {
+      const testLine = `${current}${char}`;
+      if (ctx.measureText(testLine).width > maxWidth && current) {
+        lines.push(current);
+        current = char;
+      } else {
+        current = testLine;
+      }
+    }
+
+    if (current) {
+      lines.push(current);
+    }
+    return lines;
+  }
+
+  function drawRoundedRect(ctx, x, y, width, height, radius) {
+    const r = Math.min(radius, width / 2, height / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + width - r, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+    ctx.lineTo(x + width, y + height - r);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+    ctx.lineTo(x + r, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
+  function handleExportTimelineImage(date, items) {
+    if (!date || !Array.isArray(items) || items.length === 0) {
+      window.alert("No itinerary to export for this day.");
+      return;
+    }
+
+    const dpr = Math.max(window.devicePixelRatio || 1, 1);
+    const width = 1080;
+    const padding = 56;
+    const contentWidth = width - padding * 2;
+    const headerHeight = 152;
+    const itemGap = 18;
+    const itemPadding = 20;
+    const titleFont = "700 30px 'Space Grotesk', 'Segoe UI', sans-serif";
+    const bodyFont = "500 24px 'Space Grotesk', 'Segoe UI', sans-serif";
+    const metaFont = "600 20px 'Space Grotesk', 'Segoe UI', sans-serif";
+
+    const measureCanvas = document.createElement("canvas");
+    const measureCtx = measureCanvas.getContext("2d");
+    if (!measureCtx) {
+      window.alert("Unable to export image in this browser.");
+      return;
+    }
+
+    const measuredItems = items.map((note, index) => {
+      const placeName = placeById.get(note.placeId)?.name || "Unknown place";
+      const stopTitle = `${index + 1}. ${placeName}`;
+      measureCtx.font = titleFont;
+      const titleLines = wrapCanvasText(
+        measureCtx,
+        stopTitle,
+        contentWidth - itemPadding * 2
+      );
+      measureCtx.font = bodyFont;
+      const contentLines = wrapCanvasText(
+        measureCtx,
+        note.content || "",
+        contentWidth - itemPadding * 2
+      );
+
+      const itemHeight =
+        itemPadding +
+        titleLines.length * 38 +
+        12 +
+        30 +
+        8 +
+        contentLines.length * 31 +
+        itemPadding;
+
+      return {
+        note,
+        titleLines,
+        contentLines,
+        itemHeight
+      };
+    });
+
+    const totalItemsHeight = measuredItems.reduce(
+      (sum, entry) => sum + entry.itemHeight,
+      0
+    );
+    const totalGaps = Math.max(0, measuredItems.length - 1) * itemGap;
+    const height = Math.max(
+      560,
+      padding + headerHeight + 26 + totalItemsHeight + totalGaps + padding
+    );
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      window.alert("Unable to export image in this browser.");
+      return;
+    }
+
+    ctx.scale(dpr, dpr);
+
+    const bg = ctx.createLinearGradient(0, 0, width, height);
+    bg.addColorStop(0, "#fdf3e3");
+    bg.addColorStop(0.55, "#f3efe6");
+    bg.addColorStop(1, "#e9f1ea");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, width, height);
+
+    drawRoundedRect(ctx, padding, padding, contentWidth, headerHeight, 24);
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.fill();
+
+    ctx.fillStyle = "#264653";
+    ctx.font = "700 40px 'DM Serif Display', serif";
+    ctx.fillText("Travel Itinerary", padding + 28, padding + 54);
+
+    ctx.fillStyle = "#1f1f1f";
+    ctx.font = "700 32px 'Space Grotesk', 'Segoe UI', sans-serif";
+    ctx.fillText(date, padding + 28, padding + 98);
+
+    ctx.fillStyle = "#5c5c5c";
+    ctx.font = "600 22px 'Space Grotesk', 'Segoe UI', sans-serif";
+    ctx.fillText(`${items.length} stop${items.length > 1 ? "s" : ""}`, padding + 28, padding + 130);
+
+    let cursorY = padding + headerHeight + 26;
+    measuredItems.forEach((entry) => {
+      drawRoundedRect(ctx, padding, cursorY, contentWidth, entry.itemHeight, 18);
+      ctx.fillStyle = "rgba(255,255,255,0.95)";
+      ctx.fill();
+
+      let lineY = cursorY + itemPadding + 30;
+      ctx.fillStyle = "#1f1f1f";
+      ctx.font = titleFont;
+      entry.titleLines.forEach((line) => {
+        ctx.fillText(line, padding + itemPadding, lineY);
+        lineY += 38;
+      });
+
+      const timeLabel = entry.note.time || "Anytime";
+      const typeLabel = (entry.note.type || "note").toUpperCase();
+      ctx.fillStyle = "#1b66d5";
+      ctx.font = metaFont;
+      ctx.fillText(`${timeLabel} · ${typeLabel}`, padding + itemPadding, lineY + 4);
+      lineY += 42;
+
+      ctx.fillStyle = "#3d3d3d";
+      ctx.font = bodyFont;
+      entry.contentLines.forEach((line) => {
+        ctx.fillText(line, padding + itemPadding, lineY);
+        lineY += 31;
+      });
+
+      cursorY += entry.itemHeight + itemGap;
+    });
+
+    const downloadLink = document.createElement("a");
+    const safeDate = String(date).replace(/[^0-9-]/g, "") || todayIso;
+    downloadLink.download = `itinerary-${safeDate}.png`;
+    downloadLink.href = canvas.toDataURL("image/png");
+    downloadLink.click();
+  }
+
+  function handleExportRouteMapImage(date, points) {
+    if (!date || !Array.isArray(points) || points.length === 0) {
+      window.alert("No route available to export.");
+      return;
+    }
+
+    const dpr = Math.max(window.devicePixelRatio || 1, 1);
+    const width = 1200;
+    const height = 860;
+    const padding = 48;
+    const headerHeight = 136;
+    const mapTop = padding + headerHeight;
+    const mapLeft = padding;
+    const mapWidth = width - padding * 2;
+    const mapHeight = height - mapTop - padding;
+    const mapRight = mapLeft + mapWidth;
+    const mapBottom = mapTop + mapHeight;
+
+    const lats = points.map((point) => point.lat);
+    const lngs = points.map((point) => point.lng);
+    let minLat = Math.min(...lats);
+    let maxLat = Math.max(...lats);
+    let minLng = Math.min(...lngs);
+    let maxLng = Math.max(...lngs);
+
+    const minSpan = 0.02;
+    const latSpan = Math.max(maxLat - minLat, minSpan);
+    const lngSpan = Math.max(maxLng - minLng, minSpan);
+    const latPad = latSpan * 0.12;
+    const lngPad = lngSpan * 0.12;
+    minLat -= latPad;
+    maxLat += latPad;
+    minLng -= lngPad;
+    maxLng += lngPad;
+
+    const project = (lat, lng) => {
+      const x = mapLeft + ((lng - minLng) / (maxLng - minLng)) * mapWidth;
+      const y = mapTop + ((maxLat - lat) / (maxLat - minLat)) * mapHeight;
+      return { x, y };
+    };
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      window.alert("Unable to export image in this browser.");
+      return;
+    }
+    ctx.scale(dpr, dpr);
+
+    const bg = ctx.createLinearGradient(0, 0, width, height);
+    bg.addColorStop(0, "#fdf3e3");
+    bg.addColorStop(0.5, "#f3efe6");
+    bg.addColorStop(1, "#e9f1ea");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, width, height);
+
+    drawRoundedRect(ctx, mapLeft, padding, mapWidth, headerHeight - 16, 22);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
+    ctx.fill();
+
+    ctx.fillStyle = "#264653";
+    ctx.font = "700 38px 'DM Serif Display', serif";
+    ctx.fillText("Route Map", mapLeft + 24, padding + 50);
+
+    ctx.fillStyle = "#1f1f1f";
+    ctx.font = "700 30px 'Space Grotesk', 'Segoe UI', sans-serif";
+    ctx.fillText(date, mapLeft + 24, padding + 90);
+
+    ctx.fillStyle = "#5c5c5c";
+    ctx.font = "600 20px 'Space Grotesk', 'Segoe UI', sans-serif";
+    ctx.fillText(`${points.length} stop${points.length > 1 ? "s" : ""}`, mapLeft + 24, padding + 118);
+
+    drawRoundedRect(ctx, mapLeft, mapTop, mapWidth, mapHeight, 22);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.88)";
+    ctx.fill();
+
+    ctx.save();
+    ctx.clip();
+    const sea = ctx.createLinearGradient(mapLeft, mapTop, mapRight, mapBottom);
+    sea.addColorStop(0, "rgba(173, 216, 255, 0.32)");
+    sea.addColorStop(1, "rgba(137, 208, 159, 0.28)");
+    ctx.fillStyle = sea;
+    ctx.fillRect(mapLeft, mapTop, mapWidth, mapHeight);
+
+    ctx.strokeStyle = "rgba(57, 74, 106, 0.14)";
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 8; i += 1) {
+      const x = mapLeft + (mapWidth / 8) * i;
+      const y = mapTop + (mapHeight / 8) * i;
+      ctx.beginPath();
+      ctx.moveTo(x, mapTop);
+      ctx.lineTo(x, mapBottom);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(mapLeft, y);
+      ctx.lineTo(mapRight, y);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    const plottedPoints = points.map((point) => ({
+      ...point,
+      ...project(point.lat, point.lng)
+    }));
+
+    if (plottedPoints.length > 1) {
+      ctx.strokeStyle = "#e76f51";
+      ctx.lineWidth = 6;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(plottedPoints[0].x, plottedPoints[0].y);
+      for (let i = 1; i < plottedPoints.length; i += 1) {
+        ctx.lineTo(plottedPoints[i].x, plottedPoints[i].y);
+      }
+      ctx.stroke();
+
+      ctx.fillStyle = "#e76f51";
+      for (let i = 1; i < plottedPoints.length; i += 1) {
+        const from = plottedPoints[i - 1];
+        const to = plottedPoints[i];
+        const angle = Math.atan2(to.y - from.y, to.x - from.x);
+        const arrowSize = 11;
+        const midX = from.x + (to.x - from.x) * 0.62;
+        const midY = from.y + (to.y - from.y) * 0.62;
+
+        ctx.beginPath();
+        ctx.moveTo(midX, midY);
+        ctx.lineTo(
+          midX - arrowSize * Math.cos(angle - Math.PI / 6),
+          midY - arrowSize * Math.sin(angle - Math.PI / 6)
+        );
+        ctx.lineTo(
+          midX - arrowSize * Math.cos(angle + Math.PI / 6),
+          midY - arrowSize * Math.sin(angle + Math.PI / 6)
+        );
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    plottedPoints.forEach((point, index) => {
+      ctx.beginPath();
+      ctx.fillStyle = "#1b66d5";
+      ctx.arc(point.x, point.y, 10, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "#fff";
+      ctx.stroke();
+
+      ctx.fillStyle = "#fff";
+      ctx.font = "700 14px 'Space Grotesk', 'Segoe UI', sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(index + 1), point.x, point.y + 0.5);
+    });
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+
+    plottedPoints.forEach((point, index) => {
+      const label = `${index + 1}. ${point.name}`;
+      ctx.font = "600 16px 'Space Grotesk', 'Segoe UI', sans-serif";
+      const textWidth = Math.min(ctx.measureText(label).width, 360);
+      const boxWidth = textWidth + 22;
+      const boxHeight = 30;
+      const defaultX = point.x + 14;
+      const defaultY = point.y - 18;
+      const boxX = Math.max(
+        mapLeft + 8,
+        Math.min(mapRight - boxWidth - 8, defaultX)
+      );
+      const boxY = Math.max(
+        mapTop + 8,
+        Math.min(mapBottom - boxHeight - 8, defaultY)
+      );
+
+      drawRoundedRect(ctx, boxX, boxY, boxWidth, boxHeight, 10);
+      ctx.fillStyle = "rgba(255,255,255,0.92)";
+      ctx.fill();
+      ctx.fillStyle = "#22313f";
+      const lines = wrapCanvasText(ctx, label, boxWidth - 14).slice(0, 1);
+      ctx.fillText(lines[0], boxX + 10, boxY + 20);
+    });
+
+    ctx.fillStyle = "#5c5c5c";
+    ctx.font = "500 14px 'Space Grotesk', 'Segoe UI', sans-serif";
+    ctx.fillText("Generated by Travel Notes Map", mapLeft + 8, height - 14);
+
+    const downloadLink = document.createElement("a");
+    const safeDate = String(date).replace(/[^0-9-]/g, "") || todayIso;
+    downloadLink.download = `route-map-${safeDate}.png`;
+    downloadLink.href = canvas.toDataURL("image/png");
+    downloadLink.click();
   }
 
   function clearTimelineDragState() {
@@ -761,12 +1192,35 @@ export default function Sidebar({
               {searching ? "Searching" : "Search"}
             </button>
           </div>
+          <div className="hint">
+            Click a result name to preview on map, then decide whether to add it.
+          </div>
           {searchError ? <div className="hint">{searchError}</div> : null}
           {searchResults.length > 0 ? (
             <div className="result-list">
               {searchResults.map((result) => (
-                <div key={result.id} className="result-item">
-                  <div className="result-name">{result.name}</div>
+                <div
+                  key={result.id}
+                  className={
+                    searchPreviewPlaceId === String(result.id)
+                      ? "result-item active"
+                      : "result-item"
+                  }
+                >
+                  <button
+                    type="button"
+                    className={
+                      searchPreviewPlaceId === String(result.id)
+                        ? "result-preview active"
+                        : "result-preview"
+                    }
+                    onClick={() => handlePreviewSearchResult(result)}
+                  >
+                    <div className="result-name">{result.name}</div>
+                    <div className="result-sub">
+                      {Number(result.lat).toFixed(4)}, {Number(result.lng).toFixed(4)}
+                    </div>
+                  </button>
                   <button type="button" onClick={() => handleAddFromSearch(result)}>
                     Add
                   </button>
@@ -1009,6 +1463,13 @@ export default function Sidebar({
               <div className="workspace-tabs">
                 <button
                   type="button"
+                  className={workspaceTab === "search" ? "active" : ""}
+                  onClick={() => setWorkspaceTab("search")}
+                >
+                  Search
+                </button>
+                <button
+                  type="button"
                   className={workspaceTab === "folders" ? "active" : ""}
                   onClick={() => setWorkspaceTab("folders")}
                 >
@@ -1020,13 +1481,6 @@ export default function Sidebar({
                   onClick={() => setWorkspaceTab("places")}
                 >
                   Places
-                </button>
-                <button
-                  type="button"
-                  className={workspaceTab === "search" ? "active" : ""}
-                  onClick={() => setWorkspaceTab("search")}
-                >
-                  Search
                 </button>
                 <button
                   type="button"
@@ -1125,39 +1579,102 @@ export default function Sidebar({
               <input
                 type="date"
                 value={timelineDate}
-                onChange={(event) => setTimelineDate(event.target.value)}
+                onChange={(event) => {
+                  const nextDate = event.target.value;
+                  setTimelineDate(nextDate);
+                  if (nextDate) {
+                    onSelectTimelineDate(nextDate);
+                  }
+                }}
               />
               <button type="button" onClick={() => setTimelineDate("")}>
                 Clear
               </button>
+            </div>
+            <div className="timeline-tools">
+              <div className="hint">
+                {selectedTimelineDate
+                  ? `Showing route for ${selectedTimelineDate}.`
+                  : "Select one day to show route on map."}
+              </div>
+              <div className="timeline-export-actions">
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={!selectedTimelineDate || selectedTimelineItems.length === 0}
+                  onClick={() =>
+                    handleExportTimelineImage(
+                      selectedTimelineDate,
+                      selectedTimelineItems
+                    )
+                  }
+                >
+                  Export Itinerary
+                </button>
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={!selectedTimelineDate || selectedRoutePoints.length === 0}
+                  onClick={() =>
+                    handleExportRouteMapImage(
+                      selectedTimelineDate,
+                      selectedRoutePoints
+                    )
+                  }
+                >
+                  Export Route Map
+                </button>
+              </div>
             </div>
 
             {notesByDate.length === 0 ? (
               <div className="hint">No notes yet.</div>
             ) : (
               <div className="timeline">
-                {notesByDate.map(([date, items]) => (
-                  <div
-                    key={date}
-                    className="timeline-day"
-                    onDragOver={(event) => {
-                      if (!draggingTimelineId || draggingTimelineDate !== date) return;
-                      event.preventDefault();
-                      if (!timelineIndicator || timelineIndicator.date !== date) {
-                        setTimelineIndicator({
-                          date,
-                          targetId: null,
-                          position: "end"
-                        });
-                      }
-                    }}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      handleTimelineDrop(date, items);
-                    }}
-                  >
-                    <div className="timeline-date">{date}</div>
-                    {items.map((note) => {
+                {notesByDate.map(([date, items]) => {
+                  const isSelectedDay = selectedTimelineDate === date;
+                  return (
+                    <div
+                      key={date}
+                      className={isSelectedDay ? "timeline-day active" : "timeline-day"}
+                      onDragOver={(event) => {
+                        if (!draggingTimelineId || draggingTimelineDate !== date) return;
+                        event.preventDefault();
+                        if (!timelineIndicator || timelineIndicator.date !== date) {
+                          setTimelineIndicator({
+                            date,
+                            targetId: null,
+                            position: "end"
+                          });
+                        }
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        handleTimelineDrop(date, items);
+                      }}
+                    >
+                      <div className="timeline-day-head">
+                        <button
+                          type="button"
+                          className={
+                            isSelectedDay
+                              ? "timeline-date timeline-date-active"
+                              : "timeline-date"
+                          }
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleSelectTimelineDay(date);
+                          }}
+                        >
+                          {date}
+                        </button>
+                      </div>
+                      <div className="timeline-route-tip">
+                        {isSelectedDay
+                          ? "Route is shown on map."
+                          : "Click date to show route on map."}
+                      </div>
+                      {items.map((note) => {
                       const isBefore =
                         timelineIndicator?.date === date &&
                         timelineIndicator?.targetId === note.id &&
@@ -1168,94 +1685,95 @@ export default function Sidebar({
                         timelineIndicator?.position === "after";
                       const isDragging = draggingTimelineId === note.id;
 
-                      return (
-                        <div
-                          key={note.id}
-                          className={`timeline-item${isBefore ? " drag-target-before" : ""}${
-                            isAfter ? " drag-target-after" : ""
-                          }${isDragging ? " dragging" : ""}`}
-                          draggable={editingNoteId !== note.id}
-                          onDragStart={(event) => {
-                            if (editingNoteId === note.id) return;
-                            event.dataTransfer.setData("text/plain", note.id);
-                            event.dataTransfer.effectAllowed = "move";
-                            setDraggingTimelineId(note.id);
-                            setDraggingTimelineDate(date);
-                          }}
-                          onDragEnd={() => {
-                            clearTimelineDragState();
-                          }}
-                          onDragOver={(event) => {
-                            if (!draggingTimelineId || draggingTimelineDate !== date) return;
-                            if (draggingTimelineId === note.id) return;
+                        return (
+                          <div
+                            key={note.id}
+                            className={`timeline-item${isBefore ? " drag-target-before" : ""}${
+                              isAfter ? " drag-target-after" : ""
+                            }${isDragging ? " dragging" : ""}`}
+                            draggable={editingNoteId !== note.id}
+                            onDragStart={(event) => {
+                              if (editingNoteId === note.id) return;
+                              event.dataTransfer.setData("text/plain", note.id);
+                              event.dataTransfer.effectAllowed = "move";
+                              setDraggingTimelineId(note.id);
+                              setDraggingTimelineDate(date);
+                            }}
+                            onDragEnd={() => {
+                              clearTimelineDragState();
+                            }}
+                            onDragOver={(event) => {
+                              if (!draggingTimelineId || draggingTimelineDate !== date) return;
+                              if (draggingTimelineId === note.id) return;
 
-                            event.preventDefault();
-                            event.stopPropagation();
+                              event.preventDefault();
+                              event.stopPropagation();
 
-                            const rect = event.currentTarget.getBoundingClientRect();
-                            const position =
-                              event.clientY < rect.top + rect.height / 2
-                                ? "before"
-                                : "after";
+                              const rect = event.currentTarget.getBoundingClientRect();
+                              const position =
+                                event.clientY < rect.top + rect.height / 2
+                                  ? "before"
+                                  : "after";
 
-                            setTimelineIndicator({
-                              date,
-                              targetId: note.id,
-                              position
-                            });
-                          }}
-                          onDrop={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            handleTimelineDrop(date, items);
-                          }}
-                        >
-                          <div className="timeline-head">
-                            <div className="timeline-place">
-                              <button
-                                type="button"
-                                className="text-button"
-                                onClick={() => onSelectPlace(note.placeId)}
-                              >
-                                {placeById.get(note.placeId)?.name || "Unknown place"}
-                              </button>
-                            </div>
-                            <span className="timeline-drag-hint">Drag to reorder</span>
-                          </div>
-
-                          {editingNoteId === note.id ? (
-                            <div className="timeline-edit-wrap">
-                              {renderNoteCard(note, "timeline")}
-                            </div>
-                          ) : (
-                            <>
-                              <div className="timeline-meta">
-                                {note.time ? <span className="pill time">{note.time}</span> : null}
-                                <span className="pill">{note.type}</span>
-                              </div>
-                              <div className="note-content">{note.content}</div>
-                              <div className="timeline-item-actions">
+                              setTimelineIndicator({
+                                date,
+                                targetId: note.id,
+                                position
+                              });
+                            }}
+                            onDrop={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              handleTimelineDrop(date, items);
+                            }}
+                          >
+                            <div className="timeline-head">
+                              <div className="timeline-place">
                                 <button
                                   type="button"
-                                  className="ghost"
-                                  onClick={() => handleStartEditNote(note)}
+                                  className="text-button"
+                                  onClick={() => onSelectPlace(note.placeId)}
                                 >
-                                  Edit
+                                  {placeById.get(note.placeId)?.name || "Unknown place"}
                                 </button>
                               </div>
-                            </>
-                          )}
-                        </div>
-                      );
-                    })}
+                              <span className="timeline-drag-hint">Drag to reorder</span>
+                            </div>
 
-                    {timelineIndicator?.date === date &&
-                    timelineIndicator?.targetId === null &&
-                    timelineIndicator?.position === "end" ? (
-                      <div className="timeline-end-indicator">Drop here</div>
-                    ) : null}
-                  </div>
-                ))}
+                            {editingNoteId === note.id ? (
+                              <div className="timeline-edit-wrap">
+                                {renderNoteCard(note, "timeline")}
+                              </div>
+                            ) : (
+                              <>
+                                <div className="timeline-meta">
+                                  {note.time ? <span className="pill time">{note.time}</span> : null}
+                                  <span className="pill">{note.type}</span>
+                                </div>
+                                <div className="note-content">{note.content}</div>
+                                <div className="timeline-item-actions">
+                                  <button
+                                    type="button"
+                                    className="ghost"
+                                    onClick={() => handleStartEditNote(note)}
+                                  >
+                                    Edit
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      {timelineIndicator?.date === date &&
+                      timelineIndicator?.targetId === null &&
+                      timelineIndicator?.position === "end" ? (
+                        <div className="timeline-end-indicator">Drop here</div>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </section>

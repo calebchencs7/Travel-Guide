@@ -14,6 +14,31 @@ async function requestJson(url, options = {}) {
   return data;
 }
 
+function parseTimeToMinutes(value) {
+  if (!value || typeof value !== "string") return null;
+  const [hh, mm] = value.split(":").map(Number);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+  return hh * 60 + mm;
+}
+
+function sortTimelineNotes(list) {
+  return [...list].sort((a, b) => {
+    if (Number.isFinite(a.order) && Number.isFinite(b.order)) {
+      if (a.order !== b.order) return a.order - b.order;
+    }
+
+    const aTime = parseTimeToMinutes(a.time);
+    const bTime = parseTimeToMinutes(b.time);
+    if (aTime !== null && bTime !== null && aTime !== bTime) {
+      return aTime - bTime;
+    }
+    if (aTime !== null && bTime === null) return -1;
+    if (aTime === null && bTime !== null) return 1;
+
+    return (a.createdAt || "").localeCompare(b.createdAt || "");
+  });
+}
+
 export default function App() {
   const [places, setPlaces] = useState([]);
   const [notes, setNotes] = useState([]);
@@ -21,8 +46,10 @@ export default function App() {
   const [selectedPlaceId, setSelectedPlaceId] = useState(null);
   const [selectedFolderId, setSelectedFolderId] = useState(null);
   const [pendingLatLng, setPendingLatLng] = useState(null);
+  const [searchPreviewPlace, setSearchPreviewPlace] = useState(null);
   const [mapPickEnabled, setMapPickEnabled] = useState(false);
   const [mode, setMode] = useState("place");
+  const [selectedTimelineDate, setSelectedTimelineDate] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const mapPickEnabledRef = useRef(mapPickEnabled);
@@ -50,6 +77,51 @@ export default function App() {
     () => visiblePlaces.find((place) => place.id === selectedPlaceId) || null,
     [visiblePlaces, selectedPlaceId]
   );
+  const placeById = useMemo(() => {
+    const map = new Map();
+    visiblePlaces.forEach((place) => map.set(place.id, place));
+    return map;
+  }, [visiblePlaces]);
+
+  const notesByTimelineDate = useMemo(() => {
+    const grouped = new Map();
+    visibleNotes.forEach((note) => {
+      if (!grouped.has(note.date)) {
+        grouped.set(note.date, []);
+      }
+      grouped.get(note.date).push(note);
+    });
+    grouped.forEach((items, date) => {
+      grouped.set(date, sortTimelineNotes(items));
+    });
+    return grouped;
+  }, [visibleNotes]);
+
+  const timelineRoutePath = useMemo(() => {
+    if (mode !== "timeline" || !selectedTimelineDate) return [];
+    const timelineNotes = notesByTimelineDate.get(selectedTimelineDate) || [];
+    const points = [];
+    let previousPlaceId = null;
+
+    timelineNotes.forEach((note) => {
+      const place = placeById.get(note.placeId);
+      if (!place) return;
+      const lat = Number(place.lat);
+      const lng = Number(place.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      if (previousPlaceId === place.id) return;
+      previousPlaceId = place.id;
+      points.push({
+        id: place.id,
+        lat,
+        lng,
+        name: place.name,
+        noteId: note.id
+      });
+    });
+
+    return points;
+  }, [mode, selectedTimelineDate, notesByTimelineDate, placeById]);
 
   async function loadAll() {
     setLoading(true);
@@ -90,6 +162,14 @@ export default function App() {
     }
   }, [selectedFolderId, visiblePlaces, visiblePlaceIds, selectedPlaceId]);
 
+  useEffect(() => {
+    if (!selectedTimelineDate) return;
+    const items = notesByTimelineDate.get(selectedTimelineDate);
+    if (!items || items.length === 0) {
+      setSelectedTimelineDate("");
+    }
+  }, [selectedTimelineDate, notesByTimelineDate]);
+
   async function handleAddPlace({ name, lat, lng, folderId }) {
     setLoading(true);
     setError("");
@@ -102,6 +182,7 @@ export default function App() {
       setPlaces((prev) => [...prev, place]);
       setSelectedPlaceId(place.id);
       setPendingLatLng(null);
+      setSearchPreviewPlace(null);
       return place;
     } catch (err) {
       setError(err.message || "Failed to add place");
@@ -331,7 +412,31 @@ export default function App() {
   const handleMapClick = useCallback((latlng) => {
     if (!mapPickEnabledRef.current) return;
     setPendingLatLng(latlng);
+    setSearchPreviewPlace(null);
     setMapPickEnabled(false);
+  }, []);
+
+  const handleSelectPlace = useCallback((placeId) => {
+    setSelectedPlaceId(placeId);
+    setSearchPreviewPlace(null);
+  }, []);
+
+  const handlePreviewSearchResult = useCallback((result) => {
+    if (
+      !result ||
+      !Number.isFinite(result.lat) ||
+      !Number.isFinite(result.lng)
+    ) {
+      setSearchPreviewPlace(null);
+      return;
+    }
+
+    setSearchPreviewPlace({
+      id: String(result.id),
+      name: result.name || "Search result",
+      lat: Number(result.lat),
+      lng: Number(result.lng)
+    });
   }, []);
 
   return (
@@ -346,10 +451,15 @@ export default function App() {
         pendingLatLng={pendingLatLng}
         mapPickEnabled={mapPickEnabled}
         mode={mode}
+        selectedTimelineDate={selectedTimelineDate}
         loading={loading}
         error={error}
         onModeChange={setMode}
-        onSelectPlace={setSelectedPlaceId}
+        onSelectTimelineDate={setSelectedTimelineDate}
+        searchPreviewPlaceId={searchPreviewPlace?.id || null}
+        onSelectPlace={handleSelectPlace}
+        onPreviewSearchResult={handlePreviewSearchResult}
+        onClearSearchPreview={() => setSearchPreviewPlace(null)}
         onAddPlace={handleAddPlace}
         onDeletePlace={handleDeletePlace}
         onMovePlace={handleMovePlace}
@@ -369,8 +479,10 @@ export default function App() {
         places={visiblePlaces}
         notes={visibleNotes}
         selectedPlaceId={selectedPlaceId}
+        routePath={timelineRoutePath}
         pendingLatLng={pendingLatLng}
-        onSelectPlace={setSelectedPlaceId}
+        searchPreviewPlace={searchPreviewPlace}
+        onSelectPlace={handleSelectPlace}
         onMapClick={handleMapClick}
       />
     </div>
