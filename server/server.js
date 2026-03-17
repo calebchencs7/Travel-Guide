@@ -15,12 +15,40 @@ const __dirname = path.dirname(__filename);
 const dbFile = path.join(__dirname, "data", "db.json");
 
 const adapter = new JSONFile(dbFile);
-const db = new Low(adapter, { places: [], notes: [], folders: [] });
+const emptyDbData = () => ({ places: [], notes: [], folders: [] });
+const db = new Low(adapter, emptyDbData());
 
-await db.read();
-db.data ||= { places: [], notes: [], folders: [] };
-db.data.folders ||= [];
-await db.write();
+async function initDb() {
+  try {
+    await db.read();
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      db.data = emptyDbData();
+      await db.write();
+      return;
+    }
+    throw error;
+  }
+
+  const current =
+    db.data && typeof db.data === "object" && !Array.isArray(db.data)
+      ? db.data
+      : {};
+  db.data = { ...emptyDbData(), ...current };
+  if (!Array.isArray(db.data.places)) {
+    db.data.places = [];
+  }
+  if (!Array.isArray(db.data.notes)) {
+    db.data.notes = [];
+  }
+  if (!Array.isArray(db.data.folders)) {
+    db.data.folders = [];
+  }
+
+  await db.write();
+}
+
+await initDb();
 
 async function save() {
   await db.write();

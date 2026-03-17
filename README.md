@@ -1,4 +1,4 @@
-# Travel Notes Map (React + Node)
+# Travel Notes Map (React + Node.js)
 
 A simple travel planning and note-taking app. Users can pick places on a map, attach notes (including food ideas) by date, review all notes together, and see distances between saved places.
 
