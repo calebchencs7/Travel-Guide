@@ -48,7 +48,8 @@ Create `client/.env` if needed:
 
 ```bash
 VITE_API_BASE=http://localhost:3001
-VITE_MAP_PROVIDER=osm
+VITE_MAP_PROVIDER=amap
+# You can get a free amap key and security code at https://console.amap.com/dev/index
 VITE_AMAP_KEY=
 VITE_AMAP_SECURITY=
 VITE_NOMINATIM_ENDPOINT=https://nominatim.openstreetmap.org/search

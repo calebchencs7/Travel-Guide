@@ -1,5 +1,50 @@
 {
-  "places": [],
-  "notes": [],
-  "folders": []
+  "places": [
+    {
+      "id": "NIv1fm9TykwA8w4QcFUS0",
+      "name": "中山陵景区 · 江苏省南京市玄武区 · 石象路7号",
+      "lat": 32.054508,
+      "lng": 118.854097,
+      "folderId": "OXmJXfYgYGcTAjihAxznK",
+      "createdAt": "2026-03-17T04:31:57.989Z"
+    },
+    {
+      "id": "FQsCwSC3Ni8k3oL37NgM8",
+      "name": "玄武湖景区-许愿树 · 江苏省南京市玄武区 · 情侣园",
+      "lat": 32.074336,
+      "lng": 118.806172,
+      "folderId": "OXmJXfYgYGcTAjihAxznK",
+      "createdAt": "2026-03-17T04:35:22.106Z"
+    }
+  ],
+  "notes": [
+    {
+      "id": "lDrGLMskkme75dfdFFNDc",
+      "placeId": "NIv1fm9TykwA8w4QcFUS0",
+      "date": "2026-03-20",
+      "type": "note",
+      "content": "中山陵游玩",
+      "time": "14:30",
+      "order": 0,
+      "createdAt": "2026-03-17T04:32:49.907Z"
+    },
+    {
+      "id": "XswKHo-bGpv94jKuIBpRS",
+      "placeId": "FQsCwSC3Ni8k3oL37NgM8",
+      "date": "2026-03-20",
+      "type": "note",
+      "content": "玄武湖游船",
+      "time": "16:40",
+      "order": 0,
+      "createdAt": "2026-03-17T04:37:56.175Z"
+    }
+  ],
+  "folders": [
+    {
+      "id": "OXmJXfYgYGcTAjihAxznK",
+      "name": "南京",
+      "parentId": null,
+      "createdAt": "2026-03-17T04:34:31.022Z"
+    }
+  ]
 }
