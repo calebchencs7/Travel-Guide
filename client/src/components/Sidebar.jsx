@@ -99,6 +99,8 @@ export default function Sidebar({
   onMoveFolder
 }) {
   const [workspaceTab, setWorkspaceTab] = useState("folders");
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
@@ -307,6 +309,32 @@ export default function Sidebar({
       window.removeEventListener("scroll", handleClose, true);
     };
   }, [folderMenu]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia("(max-width: 640px)");
+    const applyMobileState = (matches) => {
+      setIsMobileViewport(matches);
+      setIsHeaderCollapsed(matches);
+    };
+
+    applyMobileState(mediaQuery.matches);
+
+    const handleChange = (event) => {
+      applyMobileState(event.matches);
+    };
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleChange);
+      return () => mediaQuery.removeEventListener("change", handleChange);
+    }
+
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
+  }, []);
 
   useEffect(() => {
     setFocusedFolderId(null);
@@ -1421,35 +1449,64 @@ export default function Sidebar({
   return (
     <>
       <aside className="sidebar">
-        <div className="sidebar-header">
-          <img
-            className="brand-logo"
-            src="/logo.png"
-            alt="Travel Notes Map logo"
-            width="44"
-            height="44"
-          />
-          <div className="brand-text">
-            <div className="app-title">Travel Notes Map</div>
-            <div className="app-subtitle">
-              Plan places, attach notes, track dates.
+        <div
+          className={`sidebar-header${
+            isMobileViewport && isHeaderCollapsed ? " collapsed" : ""
+          }`}
+        >
+          <div className="sidebar-header-main">
+            <img
+              className="brand-logo"
+              src="/logo.png"
+              alt="Travel Notes Map logo"
+              width="44"
+              height="44"
+            />
+            <div className="brand-text">
+              <div className="app-title">Travel Notes Map</div>
+              <div className="app-subtitle">
+                Plan places, attach notes, track dates.
+              </div>
             </div>
+          </div>
+          <div className="sidebar-header-actions">
             <div className="mode-toggle">
               <button
                 type="button"
                 className={mode === "place" ? "active" : ""}
-                onClick={() => onModeChange("place")}
+                onClick={() => {
+                  onModeChange("place");
+                  if (isMobileViewport) {
+                    setIsHeaderCollapsed(true);
+                  }
+                }}
               >
                 Place View
               </button>
               <button
                 type="button"
                 className={mode === "timeline" ? "active" : ""}
-                onClick={() => onModeChange("timeline")}
+                onClick={() => {
+                  onModeChange("timeline");
+                  if (isMobileViewport) {
+                    setIsHeaderCollapsed(true);
+                  }
+                }}
               >
                 Timeline
               </button>
             </div>
+            {isMobileViewport ? (
+              <button
+                type="button"
+                className="header-toggle"
+                onClick={() => setIsHeaderCollapsed((prev) => !prev)}
+                aria-expanded={!isHeaderCollapsed}
+                aria-label={isHeaderCollapsed ? "Expand header" : "Collapse header"}
+              >
+                {isHeaderCollapsed ? "Show" : "Hide"}
+              </button>
+            ) : null}
           </div>
         </div>
 

@@ -27,6 +27,15 @@ Travel planning app with map-based places, folder organization, dated notes, and
   - `osm`: Leaflet + OpenStreetMap tiles + Nominatim search
   - `amap`: AMap JS API + AutoComplete search + district boundary highlight
 
+## Screenshots
+These screenshots help reviewers quickly understand the core workflow.
+
+| Place + Map View | Timeline Route View | Mobile View |
+| --- | --- | --- |
+| ![Place and map workspace](docs/screenshots/overview.png) | ![Timeline route workspace](docs/screenshots/timeline.png) | ![Mobile layout](docs/screenshots/mobile.png) |
+
+
+
 ## Tech Stack
 - Frontend: React + Vite
 - Map:
